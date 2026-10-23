@@ -90,3 +90,64 @@ def calibrate_command(baselines: Path, machine_id: str, image: str = "cflive-jud
     destination = workspace.data / "calibration.json"
     destination.write_text(json.dumps(report, indent=2))
     emit(report)
+
+
+@app.command("scaffold")
+def scaffold_command(problem_id: str) -> None:
+    """Create private draft assets without overwriting existing work."""
+    from cflive.workflow import scaffold
+
+    with connect(workspace.db) as con:
+        emit({"directory": str(scaffold(con, workspace, problem_id)), "status": "draft"})
+
+
+@app.command("attest-reference")
+def attest_command(
+    problem_id: str, submission_id: int, handle: str, reviewer: str = typer.Option(None)
+) -> None:
+    """Attest source equality and verify the referenced submission's Accepted verdict."""
+    from cflive.workflow import attest_reference
+
+    with connect(workspace.db) as con:
+        emit(
+            attest_reference(
+                con,
+                workspace,
+                problem_id,
+                submission_id=submission_id,
+                handle=handle,
+                api=CodeforcesAPI(),
+                reviewer=reviewer,
+            )
+        )
+
+
+@app.command("approve")
+def approve_command(problem_id: str, reviewer: str = typer.Option(None)) -> None:
+    """Record your manual review of exact problem assets. This does not verify them."""
+    from cflive.workflow import approve
+
+    with connect(workspace.db) as con:
+        emit({"artifact_hash": approve(con, workspace, problem_id, reviewer), "status": "approved"})
+
+
+@app.command("verify")
+def verify_command(problem_id: str, image: str = "cflive-judge:0.1") -> None:
+    """Run validators, differential tests, samples, and max-size performance checks."""
+    from cflive.judge import DockerJudge
+    from cflive.workflow import verify
+
+    factor = 1.0
+    path = workspace.data / "calibration.json"
+    judge = DockerJudge(image, artifact_dir=workspace.root / "artifacts" / "compiled")
+    if path.exists():
+        calibration = json.loads(path.read_text())
+        if calibration["judge"] != judge.identity:
+            raise typer.BadParameter("Calibration is for a different judge image/platform")
+        factor = calibration["factor"]
+    judge.factor = factor
+    with connect(workspace.db) as con:
+        report = verify(con, workspace, problem_id, judge)
+        emit(report)
+    if report["status"] != "verified":
+        raise typer.Exit(1)
