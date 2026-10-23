@@ -250,3 +250,29 @@ def reconcile_command(
                 confirmed_not_billed=confirmed_not_billed,
             )
         )
+
+
+@app.command("score")
+def score_command(
+    common: bool = False,
+    since: str = typer.Option(None),
+    rating_band: int = typer.Option(None),
+    tag: str = typer.Option(None),
+    division: str = typer.Option(None),
+) -> None:
+    """Score complete, verified sample groups with 1000 problem-bootstrap resamples."""
+    from cflive.export import public_dataset
+    from cflive.scoring import score_data
+
+    with connect(workspace.db) as con:
+        data = public_dataset(con, workspace)
+        emit(
+            score_data(
+                data,
+                common=common,
+                since=since,
+                rating_band=rating_band,
+                tag=tag,
+                division=division,
+            )
+        )
