@@ -89,11 +89,15 @@ privacy. Synthetic statistical tests recover known skill and validate cluster bo
 behavior. Browser and Python bootstrap results match on a fixed fixture. Frontend tests,
 TypeScript checks, and the production build pass.
 
-The optional full synthetic Docker pipeline also passed in 14 minutes: 500 small random
+The full synthetic Docker pipeline passed twice (about 14 minutes initially, 12 minutes
+with checkpoint/resume coverage): 500 small random
 comparisons, 10 edges, one synthetic sample input, five max-size inputs, a final 28-test
 suite, and two AC generations supplied by the offline adapter. The fake model was excluded
 from public results. This fixture does not approve or verify any real Codeforces problem.
 Run it with `CFLIVE_DOCKER_TESTS=1 CFLIVE_FULL_VERIFY=1 uv run pytest tests/test_pipeline_docker.py -q`.
+A repeated verification returns immediately, and an interrupted finalization restores the
+suite from all 516 checkpointed cases without re-executing them. Unit tests also exercise
+mid-run interruption, corrupted checkpoints, explicit remeasurement, and changed machines.
 The private report is `artifacts/full-pipeline-smoke.json`; draft QA is in
 `data/draft-validation.json`.
 

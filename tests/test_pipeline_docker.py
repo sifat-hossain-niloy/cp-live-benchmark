@@ -62,6 +62,11 @@ print(x,y)
         assert report["counts"] == {"sample": 1, "small_random": 500, "edge": 10, "max_size": 5}
         assert report["final_count"] == 28
         current_approval(con, directory, verified=True)
+        assert verify(con, ws, "2000A", judge)["cached_return"]
+        # Simulate interruption after all cases, before suite finalization.
+        con.execute("UPDATE test_sets SET status='approved',test_hash=NULL")
+        resumed = verify(con, ws, "2000A", judge)
+        assert resumed["status"] == "verified" and resumed["reused_cases"] == 516
         adapter = FakeAdapter(["```cpp\n" + code + "```"])
         result = asyncio.run(
             evaluate(
@@ -85,6 +90,12 @@ print(x,y)
         destination.parent.mkdir(exist_ok=True)
         destination.write_text(
             json.dumps(
-                {"synthetic_only": True, "verification": report, "evaluation": result}, indent=2
+                {
+                    "synthetic_only": True,
+                    "verification": report,
+                    "resumed_cases": resumed["reused_cases"],
+                    "evaluation": result,
+                },
+                indent=2,
             )
         )

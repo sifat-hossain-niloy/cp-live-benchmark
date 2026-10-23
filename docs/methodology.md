@@ -61,7 +61,15 @@ Exact, token, and finite relative-or-absolute numeric comparators are supported.
 checkers receive the input, reference answer, and contestant output in a sandbox. They must
 validate feasibility and the optimal objective, not textual identity. They print a JSON
 object with a boolean `accepted` field; exceptions and invalid reports are infrastructure
-errors rather than wrong answers. Failing inputs and reports remain private.
+errors rather than wrong answers. Failing inputs and reports remain private. Successful cases are transactionally
+checkpointed in SQLite with payload hashes and an exact environment/asset identity. A
+failed or interrupted run resumes only matching cases; an unchanged verified suite returns
+its prior report. `verify --force` remeasures all cases. Image, machine fingerprint,
+compiler, calibration, output-policy, verifier/checker implementation, or approved-asset
+changes invalidate reuse. The
+machine fingerprint hashes the host identity and Docker daemon ID, CPU allocation, memory
+allocation, and kernel version. Published results must still match their frozen suite hash
+and judge identity after re-verification.
 
 ## Judge and calibration
 

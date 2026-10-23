@@ -134,7 +134,7 @@ def approve_command(problem_id: str, reviewer: str = typer.Option(None)) -> None
 
 
 @app.command("verify")
-def verify_command(problem_id: str, image: str = "cflive-judge:0.1") -> None:
+def verify_command(problem_id: str, image: str = "cflive-judge:0.1", force: bool = False) -> None:
     """Run validators, differential tests, samples, and max-size performance checks."""
     from cflive.judge import DockerJudge
     from cflive.workflow import verify
@@ -149,7 +149,7 @@ def verify_command(problem_id: str, image: str = "cflive-judge:0.1") -> None:
         factor = calibration["factor"]
     judge.factor = factor
     with connect(workspace.db) as con:
-        report = verify(con, workspace, problem_id, judge)
+        report = verify(con, workspace, problem_id, judge, force=force)
         emit(report)
     if report["status"] != "verified":
         raise typer.Exit(1)

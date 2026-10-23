@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from cflive.db import connect
@@ -139,3 +141,70 @@ def test_source_refresh_invalidates_approval_without_rewriting_assets(tmp_path):
         con.execute("UPDATE problems SET rating=1300 WHERE id='2000A'")
         with pytest.raises(ValueError, match="rating"):
             current_approval(con, directory)
+
+
+class CountingJudge(FakeJudge):
+    def __init__(self, interrupt_after=None):
+        self.calls = 0
+        self.interrupt_after = interrupt_after
+
+    def run(self, *args, **kwargs):
+        self.calls += 1
+        if self.interrupt_after is not None and self.calls > self.interrupt_after:
+            raise KeyboardInterrupt("synthetic interruption")
+        return super().run(*args, **kwargs)
+
+
+def test_verification_is_idempotent_and_force_remeasures(tmp_path):
+    with connect(tmp_path / "db") as con:
+        ws, directory = synthetic_problem(con, tmp_path)
+        prepare_fake(directory)
+        approve(con, ws, "2000A")
+        first = verify(con, ws, "2000A", CountingJudge())
+        again = CountingJudge()
+        assert verify(con, ws, "2000A", again)["cached_return"]
+        assert again.calls == 0
+        measured = CountingJudge()
+        report = verify(con, ws, "2000A", measured, force=True)
+        assert measured.calls > 2000 and report["reused_cases"] == 0
+        assert report["final_count"] == first["final_count"]
+
+
+def test_interrupted_verification_resumes_completed_cases(tmp_path):
+    with connect(tmp_path / "db") as con:
+        ws, directory = synthetic_problem(con, tmp_path)
+        prepare_fake(directory)
+        approve(con, ws, "2000A")
+        with pytest.raises(KeyboardInterrupt):
+            verify(con, ws, "2000A", CountingJudge(interrupt_after=18))
+        completed = con.execute("SELECT count(*) FROM verification_cases").fetchone()[0]
+        assert completed > 1
+        assert con.execute("SELECT status FROM test_sets").fetchone()[0] == "approved"
+        report = verify(con, ws, "2000A", CountingJudge())
+        assert report["status"] == "verified" and report["reused_cases"] == completed
+        assert report["counts"]["small_random"] == 500
+
+
+def test_environment_changes_and_corrupt_checkpoints_are_not_reused(tmp_path, monkeypatch):
+    with connect(tmp_path / "db") as con:
+        ws, directory = synthetic_problem(con, tmp_path)
+        prepare_fake(directory)
+        approve(con, ws, "2000A")
+        with pytest.raises(KeyboardInterrupt):
+            verify(con, ws, "2000A", CountingJudge(interrupt_after=18))
+        con.execute("UPDATE verification_cases SET payload_json='corrupt'")
+        report = verify(con, ws, "2000A", CountingJudge())
+        assert report["status"] == "verified" and report["reused_cases"] == 0
+        other = CountingJudge()
+        other.identity = {**other.identity, "machine_fingerprint": "new"}
+        report = verify(con, ws, "2000A", other)
+        assert report["status"] == "verified" and report["reused_cases"] == 0
+        original_read = Path.read_bytes
+
+        def changed_checker(path):
+            data = original_read(path)
+            return data + b"# implementation changed" if path.name == "checkers.py" else data
+
+        monkeypatch.setattr(Path, "read_bytes", changed_checker)
+        report = verify(con, ws, "2000A", other)
+        assert report["status"] == "verified" and report["reused_cases"] == 0

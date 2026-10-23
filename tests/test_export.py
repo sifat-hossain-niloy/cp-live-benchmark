@@ -83,6 +83,13 @@ def test_complete_groups_only_and_cached_reruns_not_duplicated(tmp_path):
         assert len(public["models"]) == 1 and len(public["results"]) == 2
         assert adapter.calls == 2
         assert "raw_response" not in json.dumps(public)
+        row = con.execute("SELECT id,report_json FROM test_sets").fetchone()
+        report = json.loads(row["report_json"])
+        report["judge"]["machine_fingerprint"] = "changed-after-evaluation"
+        con.execute(
+            "UPDATE test_sets SET report_json=? WHERE id=?", (json.dumps(report), row["id"])
+        )
+        assert public_dataset(con, ws)["results"] == []
 
 
 def test_fake_providers_never_appear_in_public_scores(tmp_path):

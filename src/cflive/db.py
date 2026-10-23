@@ -5,7 +5,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS schema_migrations(
  version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
@@ -81,6 +81,14 @@ def connect(path: Path) -> Iterator[sqlite3.Connection]:
         con.execute("ALTER TABLE generations ADD COLUMN reservation_usd REAL NOT NULL DEFAULT 0")
         con.execute("ALTER TABLE generations ADD COLUMN error TEXT")
         con.execute("INSERT INTO schema_migrations(version) VALUES(2)")
+    if version < 3:
+        con.execute("""CREATE TABLE IF NOT EXISTS verification_cases(
+          test_set_id INTEGER NOT NULL REFERENCES test_sets(id),
+          environment_hash TEXT NOT NULL, case_id TEXT NOT NULL,
+          payload_json TEXT NOT NULL, payload_hash TEXT NOT NULL,
+          created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY(test_set_id,environment_hash,case_id))""")
+        con.execute("INSERT OR IGNORE INTO schema_migrations(version) VALUES(3)")
     con.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
     con.commit()
     try:

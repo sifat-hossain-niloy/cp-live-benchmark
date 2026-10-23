@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import platform
 import subprocess
 import tempfile
 import uuid
@@ -68,6 +69,12 @@ class DockerJudge:
             "architecture": info["Architecture"],
             "os": info["Os"],
         }
+        machine = _docker(
+            ["info", "--format", "{{.ID}}/{{.NCPU}}/{{.MemTotal}}/{{.KernelVersion}}"]
+        )
+        self.identity["machine_fingerprint"] = hashlib.sha256(
+            (platform.node() + machine.stdout.strip()).encode()
+        ).hexdigest()
         self.factor, self.output_limit = factor, output_limit
         self.artifact_dir = artifact_dir or Path("artifacts/compiled")
         self.artifact_dir.mkdir(parents=True, exist_ok=True)

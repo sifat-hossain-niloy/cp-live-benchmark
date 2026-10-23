@@ -93,6 +93,15 @@ def public_dataset(con: sqlite3.Connection, workspace: Workspace) -> dict[str, A
             for pid, rows in by_problem.items()
             if sorted(r["sample_index"] for r in rows) == list(range(snapshot["samples"]))
         }
+        frozen = {p["id"]: p for p in snapshot.get("problem_snapshot", [])}
+        complete = {
+            pid
+            for pid in complete
+            if verified_sets[pid]["test_hash"] == frozen.get(pid, {}).get("test_hash")
+            and json.loads(verified_sets[pid]["report_json"])["judge"] == snapshot.get("judge")
+            and json.loads(verified_sets[pid]["report_json"]).get("environment_hash")
+            == frozen.get(pid, {}).get("environment_hash")
+        }
         for pid in sorted(complete):
             for row in by_problem[pid]:
                 results.append(

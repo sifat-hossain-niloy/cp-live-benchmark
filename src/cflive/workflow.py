@@ -294,10 +294,32 @@ def _compile(judge: DockerJudge, path: Path) -> Program:
     return program
 
 
+def verification_environment_hash(artifact_digest: str, judge: DockerJudge) -> str:
+    """Bind checkpoints to machine, sandbox, policy, and verifier/checker implementation."""
+    engine = hashlib.sha256()
+    for name in ("workflow.py", "judge.py", "checkers.py"):
+        engine.update(name.encode() + b"\0" + (Path(__file__).parent / name).read_bytes())
+    environment = {
+        "judge": judge.identity,
+        "compiler_versions": judge.compiler_versions,
+        "calibration_factor": judge.factor,
+        "engine_hash": engine.hexdigest(),
+        "output_limit": getattr(judge, "output_limit", 64 * 1024 * 1024),
+        "artifact_hash": artifact_digest,
+        "protocol": 1,
+    }
+    return hashlib.sha256(json.dumps(environment, sort_keys=True).encode()).hexdigest()
+
+
 def verify(
-    con: sqlite3.Connection, workspace: Workspace, pid: str, judge: DockerJudge
+    con: sqlite3.Connection,
+    workspace: Workspace,
+    pid: str,
+    judge: DockerJudge,
+    *,
+    force: bool = False,
 ) -> dict[str, Any]:
-    """Fail closed; reports and failing inputs remain private even on partial verification."""
+    """Resume completed cases transactionally; bind all checkpoints to assets and environment."""
     directory = problem_dir(workspace, pid)
     approval = current_approval(con, directory)
     meta = read_meta(directory)
@@ -317,24 +339,38 @@ def verify(
     )
     if not 20 <= count <= 80 or plan["final_small_count"] > plan["small_count"]:
         raise ValueError("Final hidden set must contain 20–80 tests and a subset of small cases")
+    environment_hash = verification_environment_hash(approval["artifact_hash"], judge)
+    previous = json.loads(approval["report_json"] or "{}")
+    if not force and previous.get("environment_hash") == environment_hash:
+        try:
+            current_approval(con, directory, verified=True)
+            return {**previous, "cached_return": True}
+        except ValueError:
+            pass  # Reconstruct a changed hidden suite from authenticated case checkpoints.
     hidden = directory / "hidden"
     hidden.mkdir(exist_ok=True)
+    if force:
+        con.execute(
+            "DELETE FROM verification_cases WHERE test_set_id=? AND environment_hash=?",
+            (approval["id"], environment_hash),
+        )
     con.execute(
         "UPDATE test_sets SET status='approved',test_hash=NULL WHERE id=?", (approval["id"],)
     )
-    con.commit()  # Old verification must not survive an interrupted re-verification.
+    con.commit()  # An interrupted re-verification must never leave a verified problem.
     report: dict[str, Any] = {
         "problem_id": pid,
         "artifact_hash": approval["artifact_hash"],
         "judge": judge.identity,
         "compiler_versions": judge.compiler_versions,
         "calibration_factor": judge.factor,
+        "environment_hash": environment_hash,
         "counts": {},
+        "reused_cases": 0,
         "max_cpu_ms": 0,
         "status": "failed",
     }
-    final_tests = []
-    timings = []
+    final_tests, timings = [], []
     try:
         reference = _compile(judge, directory / "reference.cpp")
         brute_path = directory / ("brute.cpp" if (directory / "brute.cpp").exists() else "brute.py")
@@ -344,11 +380,49 @@ def verify(
         custom = directory / "checker.py"
         limits = {"time_limit": meta["time_limit_seconds"], "memory_mb": meta["memory_limit_mb"]}
 
-        def validate_and_reference(
-            input_text: str, category: str, case: int, *, compare_brute: bool
-        ) -> dict[str, Any]:
+        def record(payload: dict[str, Any]) -> dict[str, Any]:
+            test = payload["test"]
+            category = test["category"]
+            report["counts"][category] = report["counts"].get(category, 0) + 1
+            if category == "max_size":
+                timings.append(
+                    {
+                        "test_id": test["id"],
+                        "cpu_ms": payload["cpu_ms"],
+                        "memory_kb": payload["memory_kb"],
+                    }
+                )
+            return test
+
+        def run_case(category: str, case: int, input_text: str | None = None) -> dict[str, Any]:
             test_id = f"{category}-{case:04d}"
             report["active_test"] = test_id
+            key = (approval["id"], environment_hash, test_id)
+            cached = con.execute(
+                "SELECT payload_json,payload_hash FROM verification_cases "
+                "WHERE test_set_id=? AND environment_hash=? AND case_id=?",
+                key,
+            ).fetchone()
+            if (
+                cached
+                and hashlib.sha256(cached["payload_json"].encode()).hexdigest()
+                == cached["payload_hash"]
+            ):
+                payload = json.loads(cached["payload_json"])
+                report["reused_cases"] += 1
+                return record(payload)
+            if input_text is None:
+                seed = plan["seed"] + case
+                generated = judge.run(
+                    generator,
+                    "",
+                    time_limit=10,
+                    memory_mb=512,
+                    arguments=["--mode", category, "--seed", str(seed)],
+                )
+                if generated.verdict != "OK" or not generated.stdout.strip():
+                    raise ValueError(f"Generator failed: {category}/{seed}: {generated.stderr}")
+                input_text = generated.stdout
             (hidden / "last_input.txt").write_text(input_text)
             valid = judge.run(validator, input_text, time_limit=5, memory_mb=256)
             if valid.verdict != "OK":
@@ -356,17 +430,13 @@ def verify(
             result = judge.run(reference, input_text, **limits)
             if result.verdict != "OK":
                 raise ValueError(f"Reference failed {test_id}: {result.verdict} {result.stderr}")
-            if category == "max_size":
-                if result.cpu_ms > limits["time_limit"] * judge.factor * 500:
-                    raise ValueError(f"Reference exceeds 50% of calibrated time limit on {test_id}")
-                timings.append(
-                    {"test_id": test_id, "cpu_ms": result.cpu_ms, "memory_kb": result.memory_kb}
-                )
-            if compare_brute:
+            if category == "max_size" and result.cpu_ms > limits["time_limit"] * judge.factor * 500:
+                raise ValueError(f"Reference exceeds 50% of calibrated time limit on {test_id}")
+            if category in {"small_random", "edge"}:
                 expected = judge.run(brute, input_text, time_limit=10, memory_mb=512)
                 if expected.verdict != "OK":
                     raise ValueError(f"Brute failed {test_id}: {expected.verdict}")
-                comparison = check(
+                compared = check(
                     meta["checker"],
                     input_text,
                     expected.stdout,
@@ -374,20 +444,30 @@ def verify(
                     custom_path=custom,
                     sandbox=judge,
                 )
-                if not comparison.accepted:
+                if not compared.accepted:
                     (hidden / "mismatch-reference.txt").write_text(result.stdout)
                     (hidden / "mismatch-brute.txt").write_text(expected.stdout)
-                    raise ValueError(f"Reference/brute mismatch on {test_id}: {comparison.message}")
-            report["counts"][category] = report["counts"].get(category, 0) + 1
-            return {
+                    raise ValueError(f"Reference/brute mismatch on {test_id}: {compared.message}")
+            test = {
                 "id": test_id,
                 "category": category,
                 "input": input_text,
                 "output": result.stdout,
             }
+            if category != "sample":
+                test["seed"] = plan["seed"] + case
+            payload = {"test": test, "cpu_ms": result.cpu_ms, "memory_kb": result.memory_kb}
+            encoded = json.dumps(payload, sort_keys=True)
+            con.execute(
+                "INSERT OR REPLACE INTO verification_cases(test_set_id,environment_hash,"
+                "case_id,payload_json,payload_hash) VALUES(?,?,?,?,?)",
+                (*key, encoded, hashlib.sha256(encoded.encode()).hexdigest()),
+            )
+            con.commit()  # Every successful case survives an interruption of later cases.
+            return record(payload)
 
         for i, sample in enumerate(statement["samples"]):
-            test = validate_and_reference(sample["input"], "sample", i, compare_brute=False)
+            test = run_case("sample", i, sample["input"])
             if not check(
                 meta["checker"],
                 sample["input"],
@@ -396,34 +476,25 @@ def verify(
                 custom_path=custom,
                 sandbox=judge,
             ).accepted:
+                # Preserve the actual failing sample even when it came from a checkpoint.
+                (hidden / "last_input.txt").write_text(sample["input"])
                 raise ValueError(f"Reference failed official sample {i}")
             final_tests.append(test)
-        modes = [
+        for mode, total in [
             ("small_random", plan["small_count"]),
             ("edge", plan["edge_count"]),
             ("max_size", plan["max_size_count"]),
             ("adversarial", plan.get("adversarial_count", 0)),
-        ]
-        for mode, total in modes:
+        ]:
             for i in range(total):
-                seed = plan["seed"] + i
-                generated = judge.run(
-                    generator,
-                    "",
-                    time_limit=10,
-                    memory_mb=512,
-                    arguments=["--mode", mode, "--seed", str(seed)],
-                )
-                if generated.verdict != "OK" or not generated.stdout.strip():
-                    raise ValueError(f"Generator failed: {mode}/{seed}: {generated.stderr}")
-                test = validate_and_reference(
-                    generated.stdout, mode, i, compare_brute=mode in {"small_random", "edge"}
-                )
-                test["seed"] = seed
+                test = run_case(mode, i)
                 if mode != "small_random" or i < plan["final_small_count"]:
                     final_tests.append(test)
         if artifact_hash(directory) != approval["artifact_hash"]:
             raise ValueError("Assets changed during verification")
+        require_source_metadata(con, pid, meta)
+        if verification_environment_hash(approval["artifact_hash"], judge) != environment_hash:
+            raise ValueError("Verification implementation changed during this run")
         report.update(
             status="verified",
             final_count=len(final_tests),
@@ -431,7 +502,9 @@ def verify(
             max_cpu_ms=max((t["cpu_ms"] for t in timings), default=0),
         )
         digest = test_hash(final_tests)
-        (hidden / "tests.json").write_text(json.dumps(final_tests, ensure_ascii=False))
+        temporary = hidden / "tests.json.tmp"
+        temporary.write_text(json.dumps(final_tests, ensure_ascii=False))
+        temporary.replace(hidden / "tests.json")
         con.execute(
             "UPDATE test_sets SET status='verified',test_hash=?,report_json=? WHERE id=?",
             (digest, json.dumps(report), approval["id"]),
@@ -448,5 +521,6 @@ def verify(
         )
         meta["status"] = "approved"
         write_meta(directory, meta)
+    con.commit()
     (hidden / "verification-report.json").write_text(json.dumps(report, indent=2))
     return report

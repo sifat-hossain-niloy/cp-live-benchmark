@@ -114,6 +114,13 @@ and hidden suites stay in `problems/ID/hidden/`. Interrupted or failed re-verifi
 revokes the previous verified state. Changing hidden tests also invalidates eligibility. Collected CF limits, dates, ratings,
 and tags must match local metadata; a source refresh requires a fresh review rather than
 silently changing a published experiment.
+Successful cases are checkpointed transactionally in private SQLite, keyed by approved
+assets, image, machine fingerprint, compiler versions, calibration, output policy, and
+verifier/checker implementation.
+Interrupted or failed verification resumes completed cases. An unchanged verified suite
+returns immediately; `cflive verify PROBLEM_ID --force` discards matching checkpoints and
+remeasures it. Changed assets or environments cannot reuse incompatible cases.
+
 Verification starts at factor 1 if calibration is absent; production evaluation requires
 re-verification with the measured calibrated judge identity.
 

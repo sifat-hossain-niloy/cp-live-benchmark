@@ -14,7 +14,7 @@ from cflive.config import Workspace
 from cflive.judge import DockerJudge
 from cflive.models import ModelConfig
 from cflive.providers import Adapter, RejectedRequest, UncertainRequest
-from cflive.workflow import current_approval, problem_dir, read_meta
+from cflive.workflow import current_approval, problem_dir, read_meta, verification_environment_hash
 
 
 def extract_code(text: str, language: str = "cpp17") -> str | None:
@@ -153,7 +153,12 @@ async def evaluate(
         raise ValueError("No verified problems after the documented model cutoff")
     for problem in problems:
         report = json.loads(problem["test_set"]["report_json"])
-        if report["judge"] != judge.identity or report["calibration_factor"] != judge.factor:
+        if (
+            report["judge"] != judge.identity
+            or report["calibration_factor"] != judge.factor
+            or report.get("environment_hash")
+            != verification_environment_hash(problem["test_set"]["artifact_hash"], judge)
+        ):
             raise ValueError(f"{problem['id']}: reverify with this calibrated judge image/platform")
     con.execute(
         "INSERT INTO models VALUES(?,?,?,?,?,?,?) ON CONFLICT(name) DO UPDATE SET "
@@ -183,6 +188,7 @@ async def evaluate(
                 "memory_limit": p["memory_limit"],
                 "artifact_hash": p["test_set"]["artifact_hash"],
                 "test_hash": p["test_set"]["test_hash"],
+                "environment_hash": json.loads(p["test_set"]["report_json"])["environment_hash"],
             }
             for p in problems
         ],
@@ -190,6 +196,7 @@ async def evaluate(
         "metadata_hash": config.hash(),
         "template_hash": hashlib.sha256(template.encode()).hexdigest(),
         "calibration_factor": judge.factor,
+        "judge": judge.identity,
         "mode": "single-shot",
         "test_only": config.provider == "fake",
     }
@@ -346,7 +353,17 @@ async def evaluate(
             return
         async with judge_slots:
             # Detect edits during an in-progress run before spending compute on obsolete tests.
-            current_approval(con, problem["directory"], verified=True)
+            current = current_approval(con, problem["directory"], verified=True)
+            if (
+                current["id"] != problem["test_set"]["id"]
+                or current["test_hash"] != problem["test_set"]["test_hash"]
+                or json.loads(current["report_json"])["judge"] != judge.identity
+                or json.loads(current["report_json"]).get("environment_hash")
+                != verification_environment_hash(current["artifact_hash"], judge)
+            ):
+                raise ValueError(
+                    "Verified suite or judge changed during evaluation; start a new run"
+                )
             tests = json.loads((problem["directory"] / "hidden" / "tests.json").read_text())
             judgment = await asyncio.to_thread(
                 judge.judge,

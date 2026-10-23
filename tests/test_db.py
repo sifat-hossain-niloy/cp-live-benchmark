@@ -22,7 +22,7 @@ def test_migrates_v1_and_preserves_records(tmp_path):
             assert con.execute("SELECT name FROM contests").fetchone()[0] == "Synthetic"
             assert [
                 r[0] for r in con.execute("SELECT version FROM schema_migrations ORDER BY version")
-            ] == [1, 2]
+            ] == [1, 2, 3]
 
 
 def test_refuses_future_schema(tmp_path):
