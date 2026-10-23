@@ -174,7 +174,8 @@ async def evaluate(
         "samples": samples,
         "judge_workers": judge_workers,
         "problem_ids": [p["id"] for p in problems],
-        "config_hash": config.hash(),
+        "config_hash": config.request_hash(),
+        "metadata_hash": config.hash(),
         "template_hash": hashlib.sha256(template.encode()).hexdigest(),
         "calibration_factor": judge.factor,
         "mode": "single-shot",
@@ -229,7 +230,7 @@ async def evaluate(
     con.commit()
 
     async def one(problem, meta, prompt, prompt_hash, sample) -> None:
-        key = (name, problem["id"], prompt_hash, config.hash(), sample)
+        key = (name, problem["id"], prompt_hash, config.request_hash(), sample)
         cached = con.execute(
             "SELECT * FROM generations WHERE model_name=? AND problem_id=? "
             "AND prompt_hash=? AND config_hash=? AND sample_index=?",

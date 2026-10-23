@@ -94,7 +94,7 @@ class HTTPAdapter:
                 payload = result.json()
             except ValueError as exc:
                 raise UncertainRequest("Provider response was not valid JSON") from exc
-            if "error" in payload:
+            if payload.get("error"):
                 raise UncertainRequest("Provider returned an error envelope; billing uncertain")
             return payload
         raise AssertionError("unreachable")

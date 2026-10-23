@@ -80,6 +80,16 @@ class ModelConfig(BaseModel):
     def hash(self) -> str:
         return hashlib.sha256(json.dumps(self.snapshot(), sort_keys=True).encode()).hexdigest()
 
+    def request_hash(self) -> str:
+        """Only request-affecting settings invalidate a paid-response cache slot."""
+        payload = {
+            k: self.snapshot()[k]
+            for k in ("provider", "model_id", "sampling", "max_output_tokens", "language")
+        }
+        if self.provider == "anthropic":
+            payload["anthropic_version"] = self.anthropic_version
+        return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+
 
 def load_models(path: Path) -> dict[str, ModelConfig]:
     raw = yaml.safe_load(path.read_text()) or {}

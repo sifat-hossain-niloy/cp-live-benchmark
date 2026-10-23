@@ -21,3 +21,5 @@ test-results/
 *.egg-info/
 dist/
 build/
+
+*.tsbuildinfo

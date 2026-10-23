@@ -276,3 +276,29 @@ def score_command(
                 division=division,
             )
         )
+
+
+@app.command("build-site")
+def build_site_command(export_only: bool = False, save_snapshot: bool = False) -> None:
+    """Allowlist public metadata and results, then build the static React app."""
+    import subprocess
+
+    from cflive.export import export_dataset
+
+    destination = workspace.root / "site" / "public" / "data.json"
+    with connect(workspace.db) as con:
+        data = export_dataset(con, workspace, destination)
+    if save_snapshot:
+        snapshot = workspace.root / "site" / "snapshots" / "latest.json"
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        snapshot.write_text(destination.read_text())
+    if not export_only:
+        subprocess.run(["npm", "run", "build"], cwd=workspace.root / "site", check=True)
+    emit(
+        {
+            "export": str(destination),
+            "status": data["status"],
+            "inventory": data["inventory"],
+            "built": not export_only,
+        }
+    )

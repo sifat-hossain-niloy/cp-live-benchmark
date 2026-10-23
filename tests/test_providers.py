@@ -114,3 +114,23 @@ def test_preflight_request_shape_and_no_tools():
     )
     assert asyncio.run(adapter.count_input("prompt")) == 12
     assert seen == [("/v1/responses/input_tokens", {"model": "synthetic", "input": "prompt"})]
+
+
+def test_openai_success_with_null_error_is_not_rejected():
+    def handle(request):
+        return httpx.Response(
+            200,
+            json={
+                "error": None,
+                "status": "completed",
+                "output": [],
+                "usage": {"input_tokens": 10, "output_tokens": 20},
+            },
+        )
+
+    adapter = HTTPAdapter(
+        ModelConfig(provider="openai", display_name="test", model_id="synthetic"),
+        httpx.AsyncClient(transport=httpx.MockTransport(handle)),
+        api_key="synthetic",
+    )
+    assert asyncio.run(adapter.generate("test")).output_tokens == 20

@@ -37,6 +37,9 @@ def supervise(args: argparse.Namespace) -> dict:
     if ctypes.CDLL(None).prctl(4, 0, 0, 0, 0) != 0:
         raise RuntimeError("Cannot protect supervisor report channel")
     output, error = Path("/work/stdout"), Path("/work/stderr")
+    # Keep inodes open: a submission may replace paths with symlinks or named pipes.
+    output_fd = os.open(output, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
+    error_fd = os.open(error, os.O_RDWR | os.O_CREAT | os.O_EXCL, 0o600)
     before_oom = oom_count()
     before_cpu = cpu_usage_ms()
     start = time.monotonic()
@@ -49,9 +52,7 @@ def supervise(args: argparse.Namespace) -> dict:
             resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
             resource.setrlimit(resource.RLIMIT_NOFILE, (64, 64))
             stdin = os.open(args.input, os.O_RDONLY)
-            stdout = os.open(output, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            stderr = os.open(error, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            for src, dst in [(stdin, 0), (stdout, 1), (stderr, 2)]:
+            for src, dst in [(stdin, 0), (output_fd, 1), (error_fd, 2)]:
                 os.dup2(src, dst)
             os.closerange(3, 1024)
             os.execvp(args.command[0], args.command)
@@ -66,9 +67,7 @@ def supervise(args: argparse.Namespace) -> dict:
             killed = "TLE"
         elif time.monotonic() - start > args.wall:
             killed = "TLE"
-        elif (
-            sum(p.stat().st_size if p.exists() else 0 for p in (output, error)) >= args.output_limit
-        ):
+        elif sum(os.fstat(fd).st_size for fd in (output_fd, error_fd)) >= args.output_limit:
             killed = "OUTPUT_LIMIT"
         if killed:
             try:
@@ -82,7 +81,7 @@ def supervise(args: argparse.Namespace) -> dict:
     cpu = cpu_usage_ms() - before_cpu
     code = os.waitstatus_to_exitcode(status)
     sig = -code if code < 0 else None
-    size = sum(p.stat().st_size if p.exists() else 0 for p in (output, error))
+    size = sum(os.fstat(fd).st_size for fd in (output_fd, error_fd))
     if oom_count() > before_oom:
         verdict = "MLE"
     elif killed == "OUTPUT_LIMIT" or sig == signal.SIGXFSZ or size >= args.output_limit:
@@ -91,13 +90,18 @@ def supervise(args: argparse.Namespace) -> dict:
         verdict = "TLE"
     else:
         verdict = "OK" if code == 0 else "RE"
+
+    def read_bounded(fd: int, limit: int) -> str:
+        os.lseek(fd, 0, os.SEEK_SET)
+        return os.read(fd, limit).decode(errors="replace")
+
     payload = {
         "verdict": verdict,
         "exit_code": code,
         "cpu_ms": cpu,
         "wall_ms": elapsed,
         "memory_kb": usage.ru_maxrss,
-        "stderr": error.read_bytes()[:8192].decode(errors="replace") if error.exists() else "",
+        "stderr": read_bounded(error_fd, 8192),
     }
     if args.compile:
         artifact = Path("/work/program")
@@ -109,11 +113,7 @@ def supervise(args: argparse.Namespace) -> dict:
             else None
         )
     else:
-        payload["stdout"] = (
-            output.read_bytes()[: args.output_limit].decode(errors="replace")
-            if output.exists()
-            else ""
-        )
+        payload["stdout"] = read_bounded(output_fd, args.output_limit)
     return payload
 
 

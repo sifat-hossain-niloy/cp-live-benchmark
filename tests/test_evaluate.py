@@ -145,3 +145,15 @@ def test_cutoff_day_is_excluded():
     from datetime import datetime
 
     assert c.cutoff_timestamp() == int(datetime(2025, 1, 1, 23, 59, 59, tzinfo=UTC).timestamp())
+
+
+def test_metadata_updates_do_not_regenerate_identical_paid_requests():
+    c = config()
+    request_hash, metadata_hash = c.request_hash(), c.hash()
+    c.display_name = "Updated display name"
+    c.concurrency = 4
+    c.prices.input_per_million = 10
+    assert c.hash() != metadata_hash
+    assert c.request_hash() == request_hash
+    c.max_output_tokens += 100
+    assert c.request_hash() != request_hash

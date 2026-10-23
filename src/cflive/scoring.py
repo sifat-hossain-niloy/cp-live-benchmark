@@ -1,7 +1,6 @@
 """Per-problem balanced pass@1 and logistic performance estimates, not official CF ratings."""
 
 import math
-import random
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 from statistics import mean
@@ -61,10 +60,16 @@ def bootstrap_ci(
             "unbounded_low": False,
             "unbounded_high": False,
         }
-    rng = random.Random(seed)
+    state = seed & 0xFFFFFFFF
+
+    def random_index() -> int:
+        nonlocal state
+        state = (1664525 * state + 1013904223) & 0xFFFFFFFF
+        return int(state / 4294967296 * len(outcomes))
+
     estimates = []
     for _ in range(resamples):
-        sampled = rng.choices(outcomes, k=len(outcomes))
+        sampled = [outcomes[random_index()] for _ in outcomes]
         skill = fit_skill(sampled)
         if skill is None:
             skill = float("-inf") if sum(o.accepted for o in sampled) == 0 else float("inf")

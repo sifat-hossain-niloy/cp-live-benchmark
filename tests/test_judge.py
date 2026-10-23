@@ -105,3 +105,26 @@ def test_custom_checker_json_protocol(judge, tmp_path):
     )
     assert check("custom", "", "1 2", "2 1", custom_path=checker, sandbox=judge).accepted
     assert not check("custom", "", "1 2", "1", custom_path=checker, sandbox=judge).accepted
+
+
+@pytest.mark.docker
+def test_output_path_replacement_cannot_hang_supervisor(judge):
+    code = "import os\nos.unlink('/work/stdout')\nos.symlink('/dev/zero','/work/stdout')\nprint(42)"
+    result = judge.judge(
+        code,
+        [{"id": "path", "category": "edge", "input": "", "output": "42"}],
+        time_limit=1,
+        memory_mb=64,
+        language="python3",
+    )
+    assert result.verdict == "AC", asdict(result)
+
+
+@pytest.mark.docker
+def test_python_hash_seed_is_reproducible(judge):
+    code = 'print(hash("cflive deterministic generator"))'
+    program, _ = judge.compile(code, "python3")
+    one = judge.run(program, "", time_limit=1, memory_mb=64)
+    two = judge.run(program, "", time_limit=1, memory_mb=64)
+    assert one.verdict == two.verdict == "OK"
+    assert one.stdout == two.stdout

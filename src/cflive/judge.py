@@ -102,7 +102,7 @@ class DockerJudge:
         compile_step: bool = False,
     ) -> Execution:
         name = "cflive-" + uuid.uuid4().hex
-        wall = max(3.0, cpu * 3 + 1)
+        wall = 30.0 if compile_step else max(3.0, cpu * 3 + 1)
         args = [
             "run",
             "--name",
@@ -224,7 +224,7 @@ class DockerJudge:
             source.write_text(input_text)
             source.chmod(0o444)
             target = "/artifact/main.py" if program.language == "python3" else "/artifact/program"
-            command = ["python3", "-I", target] if program.language == "python3" else [target]
+            command = ["python3", "-s", "-P", target] if program.language == "python3" else [target]
             return self._execute(
                 command + (arguments or []),
                 {program.path: target, source: "/input/test", **(extra_files or {})},
