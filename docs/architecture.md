@@ -14,7 +14,7 @@ pin dependencies. Gitignored `data/`, `problems/`, and `artifacts/` contain all 
 
 ## Storage
 
-SQLite schema version 1 lives in `src/cflive/db.py`. Foreign keys and WAL are enabled.
+SQLite schema version 2 lives in `src/cflive/db.py`. Foreign keys and WAL are enabled.
 `contests` stores API objects and UTC starts; `problems` stores identity, metadata,
 exclusions, scrape status; `problem_tags` is normalized. `test_sets` binds approvals and
 verification reports to artifact and hidden-test hashes. `models` stores sourced model
@@ -47,6 +47,8 @@ with >=5 max-size tests. Reference provenance must be checked; drafts cannot ent
 5. Balanced per-problem pass@1, logistic skill MLE, problem-level bootstrap, common window.
 6. Safe JSON export, responsive static site and methodology, CI/Pages deployment.
 7. Setup/reproduction/limitations documentation and a clear handoff of missing evidence.
+
+Migration 2 adds durable generation reservations and recovery diagnostics.
 
 Each phase ends in passing applicable tests and a Git commit. Never fabricate benchmark
 scores, approvals, model metadata, accepted references, or verification coverage to meet

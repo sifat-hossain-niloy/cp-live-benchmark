@@ -69,7 +69,9 @@ def judge_info(image: str = "cflive-judge:0.1") -> None:
 
 
 @app.command("calibrate")
-def calibrate_command(baselines: Path, machine_id: str, image: str = "cflive-judge:0.1") -> None:
+def calibrate_command(
+    baselines: Path, machine_id: str = typer.Option(...), image: str = "cflive-judge:0.1"
+) -> None:
     """Compute a CPU calibration factor from supplied, measured reference baselines."""
     from cflive.judge import DockerJudge, calibration
 
