@@ -182,8 +182,8 @@ export function Analysis({ ranked }: { ranked: Score[] }) {
                         background:
                           s.tags[t] === undefined
                             ? "var(--wash)"
-                            : `rgba(40,85,232,${0.08 + s.tags[t] * 0.7})`,
-                        color: s.tags[t] > 0.5 ? "white" : "var(--ink)",
+                            : `rgba(40,85,232,${0.08 + s.tags[t] * 0.52})`,
+                        color: "var(--ink)",
                       }}
                     >
                       {percent(s.tags[t] ?? null)}

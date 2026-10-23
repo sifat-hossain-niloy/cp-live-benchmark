@@ -78,7 +78,8 @@ def collect(con: sqlite3.Connection, api: CodeforcesAPI, since: date) -> dict[st
     for contest in contests.values():
         con.execute(
             """INSERT INTO contests VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
-          name=excluded.name,division=excluded.division,phase=excluded.phase,raw_json=excluded.raw_json""",
+          name=excluded.name,division=excluded.division,phase=excluded.phase,
+          start_time=excluded.start_time,raw_json=excluded.raw_json""",
             (
                 contest["id"],
                 contest["name"],
@@ -106,7 +107,7 @@ def collect(con: sqlite3.Connection, api: CodeforcesAPI, since: date) -> dict[st
         con.execute(
             """INSERT INTO problems(id,contest_id,problem_index,name,rating,contest_start,
           exclusion_reason,status) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
-          rating=excluded.rating,name=excluded.name,
+          rating=excluded.rating,name=excluded.name,contest_start=excluded.contest_start,
           exclusion_reason=CASE WHEN problems.exclusion_reason
           IN ('unrated','interactive','special')
           OR problems.exclusion_reason IS NULL THEN excluded.exclusion_reason

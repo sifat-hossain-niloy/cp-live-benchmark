@@ -174,6 +174,18 @@ async def evaluate(
         "samples": samples,
         "judge_workers": judge_workers,
         "problem_ids": [p["id"] for p in problems],
+        "problem_snapshot": [
+            {
+                "id": p["id"],
+                "rating": p["rating"],
+                "contest_start": p["contest_start"],
+                "time_limit": p["time_limit"],
+                "memory_limit": p["memory_limit"],
+                "artifact_hash": p["test_set"]["artifact_hash"],
+                "test_hash": p["test_set"]["test_hash"],
+            }
+            for p in problems
+        ],
         "config_hash": config.request_hash(),
         "metadata_hash": config.hash(),
         "template_hash": hashlib.sha256(template.encode()).hexdigest(),
@@ -248,6 +260,8 @@ async def evaluate(
                 if stopped.is_set():
                     return
                 counted = await adapter.count_input(prompt)
+                if stopped.is_set():
+                    return
                 # Count endpoints can have small formatting differences. Reserve a documented
                 # experiment safety margin; this is not a model context/capability claim.
                 input_bound = counted + max(1024, counted // 20)

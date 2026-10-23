@@ -28,8 +28,13 @@ The 57 non-excluded scaffolded problems span ratings 800–2000:
 | Div. 3 | 18 |
 | Educational | 10 |
 
-These are starter directories, **not completed generators, approved tests, accepted
-references, or verified benchmark problems**. Their draft programs intentionally fail.
+These are **unapproved drafts, not accepted references or verified benchmark problems**.
+Five directories (`2260A`, `2263A`, `2266A`, `2267A`, `2271A`) now contain implemented
+brute-force, generator, and validator drafts with private `DRAFT_NOTES.md`. Their official
+sample inputs matched expected outputs; one seed in each of four generation modes passed
+its validator, and three malformed inputs were rejected per validator. This is a starting
+review batch, not full verification. Accepted references remain absent. The other 52
+directories still contain intentionally failing starter programs.
 The published site has no fabricated scores. No paid model calls have been made.
 
 ## Required evidence before a scored study
@@ -64,6 +69,8 @@ The published site has no fabricated scores. No paid model calls have been made.
 - `data/statements/`: 60 parsed statements, never published.
 - `problems/`: 57 draft directories; never committed.
 - `artifacts/`: compiled sandbox programs and local QA artifacts; never committed.
+- `artifacts/private-review-workspace-2026-10-23.tar.gz`: local private backup of the
+  57 problem directories, raw/parsed statements, draft QA, and a consistent SQLite backup.
 - `data/calibration.json`: not present until measured baselines are supplied.
 - `models.yaml`: tracked incomplete configurations; intentionally refused by `eval`.
 - `site/snapshots/latest.json`: intentionally public, allowlisted metadata; safe to review
@@ -82,8 +89,18 @@ privacy. Synthetic statistical tests recover known skill and validate cluster bo
 behavior. Browser and Python bootstrap results match on a fixed fixture. Frontend tests,
 TypeScript checks, and the production build pass.
 
+The optional full synthetic Docker pipeline also passed in 14 minutes: 500 small random
+comparisons, 10 edges, one synthetic sample input, five max-size inputs, a final 28-test
+suite, and two AC generations supplied by the offline adapter. The fake model was excluded
+from public results. This fixture does not approve or verify any real Codeforces problem.
+Run it with `CFLIVE_DOCKER_TESTS=1 CFLIVE_FULL_VERIFY=1 uv run pytest tests/test_pipeline_docker.py -q`.
+The private report is `artifacts/full-pipeline-smoke.json`; draft QA is in
+`data/draft-validation.json`.
+
 Browser QA exercised navigation, a rating-band filter (1400 returned six candidates), a
-problem detail/Codeforces link, light and dark themes, and desktop/mobile layout. A mobile
+problem detail/Codeforces link, light and dark themes, and desktop/mobile layout.
+A separate, ignored synthetic UI fixture exercised populated charts, heatmaps, verdict
+distributions, and the common-window control without publishing synthetic model scores. A mobile
 header overflow found during QA was fixed. Charts are loaded separately from the initial
 application bundle. The public site remains a preparation preview until the evidence above
 is supplied.

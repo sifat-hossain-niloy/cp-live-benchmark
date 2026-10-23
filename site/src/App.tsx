@@ -173,7 +173,7 @@ function App() {
         ) : route.startsWith("methodology") ? (
           <Methodology />
         ) : route.startsWith("problem/") ? (
-          <ProblemDetail data={data} id={decodeURIComponent(route.slice(8))} />
+          <ProblemDetail data={data} id={route.slice(8)} />
         ) : (
           <Workspace data={data} catalog={route === "problems"} />
         )}

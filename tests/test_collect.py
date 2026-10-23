@@ -85,3 +85,32 @@ def test_api_retries_and_spaces_calls():
     assert api.call("contest.list") == []
     api.call("contest.list")
     assert all(b - a >= 2.1 for a, b in zip(calls, calls[1:]))
+
+
+def test_corrected_contest_start_refreshes_contamination_timestamp(tmp_path):
+    class API:
+        start = 1750000000
+
+        def call(self, method, **kwargs):
+            if method == "contest.list":
+                return [{**contest(), "startTimeSeconds": self.start}]
+            return {
+                "problems": [
+                    dict(
+                        contestId=2000,
+                        index="A",
+                        name="Synthetic",
+                        type="PROGRAMMING",
+                        tags=[],
+                        rating=800,
+                    )
+                ]
+            }
+
+    api = API()
+    with connect(tmp_path / "db") as con:
+        collect(con, api, date(2025, 1, 1))
+        api.start -= 10000
+        collect(con, api, date(2025, 1, 1))
+        assert con.execute("SELECT start_time FROM contests").fetchone()[0] == api.start
+        assert con.execute("SELECT contest_start FROM problems").fetchone()[0] == api.start

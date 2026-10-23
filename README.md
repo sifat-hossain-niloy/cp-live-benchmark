@@ -10,7 +10,8 @@ and a static public leaderboard.
 **Status: infrastructure preview, not a completed benchmark study.** The initial live
 collection found 94 candidates since September 1, 2026. Sixty statements were parsed;
 three image-bearing candidates were then excluded, leaving 91 candidates and 57 private
-draft problem directories. No problem has been human-approved or verified, no model
+draft problem directories. Five directories contain sample-checked brute/generator/validator implementation drafts.
+No problem has been human-approved or verified, no model
 metadata has been invented, and no paid model evaluations have run. The public site
 shows those preparation counts and leaves model scores empty.
 
@@ -110,7 +111,9 @@ Verification checks every generated input, official samples, >=500 small random
 reference/brute comparisons and all edges, and >=5 max-size cases within half the
 calibrated time allowance. The final suite must have 20–80 cases. Reports, failing inputs,
 and hidden suites stay in `problems/ID/hidden/`. Interrupted or failed re-verification
-revokes the previous verified state. Changing hidden tests also invalidates eligibility.
+revokes the previous verified state. Changing hidden tests also invalidates eligibility. Collected CF limits, dates, ratings,
+and tags must match local metadata; a source refresh requires a fresh review rather than
+silently changing a published experiment.
 Verification starts at factor 1 if calibration is absent; production evaluation requires
 re-verification with the measured calibrated judge identity.
 
@@ -230,6 +233,8 @@ CFLIVE_DOCKER_TESTS=1 uv run pytest -q     # includes real sandbox/security case
 npm --prefix site test
 npm --prefix site run build
 uv run ruff check
+# Optional full synthetic pipeline (>2000 fresh containers; may take several minutes):
+CFLIVE_DOCKER_TESTS=1 CFLIVE_FULL_VERIFY=1 uv run pytest tests/test_pipeline_docker.py -q
 ```
 
 No tests call a live Codeforces API or live model. HTTP is mocked; statement fixtures and

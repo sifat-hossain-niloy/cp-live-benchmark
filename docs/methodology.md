@@ -43,6 +43,8 @@ API does not supply submission source. Provenance is bound to the local referenc
 The reviewer approves the reference, independent brute-force oracle, seeded generator,
 exact-constraint validator, custom checker if needed, statement parsing, and metadata.
 Approval records the reviewer, time, and artifact hash. Edits invalidate approval.
+Local limits, dates, ratings, and tags must match the collected CF source. Source refreshes
+invalidate mismatched approval, and run snapshots freeze the selected problem metadata.
 
 Verification requires:
 

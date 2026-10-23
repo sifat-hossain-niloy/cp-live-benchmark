@@ -209,11 +209,32 @@ def require_provenance(directory: Path, meta: dict[str, Any]) -> None:
         raise ValueError("Reference changed after source provenance was attested")
 
 
+def require_source_metadata(con: sqlite3.Connection, pid: str, meta: dict[str, Any]) -> None:
+    """Do not silently change CF limits, dates, or difficulty when reviewing local assets."""
+    row = con.execute("SELECT * FROM problems WHERE id=?", (pid,)).fetchone()
+    if row is None or row["exclusion_reason"]:
+        raise ValueError("Problem is absent or excluded from the collected candidate pool")
+    expected = {
+        "problem_id": pid,
+        "contest_start": row["contest_start"],
+        "rating": row["rating"],
+        "time_limit_seconds": row["time_limit"],
+        "memory_limit_mb": row["memory_limit"],
+    }
+    changed = [key for key, value in expected.items() if meta.get(key) != value]
+    tags = {r[0] for r in con.execute("SELECT tag FROM problem_tags WHERE problem_id=?", (pid,))}
+    if set(meta.get("tags", [])) != tags:
+        changed.append("tags")
+    if changed:
+        raise ValueError("Metadata differs from collected Codeforces source: " + ", ".join(changed))
+
+
 def approve(
     con: sqlite3.Connection, workspace: Workspace, pid: str, reviewer: str | None = None
 ) -> str:
     directory = problem_dir(workspace, pid)
     meta = read_meta(directory)
+    require_source_metadata(con, pid, meta)
     require_provenance(directory, meta)
     required = ["reference.cpp", "gen.py", "validator.py", "statement.json"]
     if not ((directory / "brute.cpp").exists() or (directory / "brute.py").exists()):
@@ -247,6 +268,7 @@ def approve(
 
 def current_approval(con: sqlite3.Connection, directory: Path, *, verified: bool = False):
     pid = directory.name
+    require_source_metadata(con, pid, read_meta(directory))
     digest = artifact_hash(directory)
     status = "status='verified'" if verified else "status IN ('approved','verified')"
     row = con.execute(

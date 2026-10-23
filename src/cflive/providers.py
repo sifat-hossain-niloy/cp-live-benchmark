@@ -216,7 +216,14 @@ def parse_response(provider: str, raw: dict[str, Any], latency: float) -> Respon
             + u.get("cache_read_input_tokens", 0)
             + u.get("cache_creation_input_tokens", 0)
         )
-        return Response(text, inputs, u["output_tokens"], None, latency, raw)
+        return Response(
+            text,
+            inputs,
+            u["output_tokens"],
+            u.get("output_tokens_details", {}).get("thinking_tokens"),
+            latency,
+            raw,
+        )
     if provider == "google":
         text = "\n".join(
             part.get("text", "")

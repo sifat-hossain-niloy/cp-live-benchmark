@@ -134,3 +134,19 @@ def test_openai_success_with_null_error_is_not_rejected():
         api_key="synthetic",
     )
     assert asyncio.run(adapter.generate("test")).output_tokens == 20
+
+
+def test_anthropic_records_reported_thinking_tokens_without_double_counting():
+    response = parse_response(
+        "anthropic",
+        {
+            "content": [],
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": 20,
+                "output_tokens_details": {"thinking_tokens": 15},
+            },
+        },
+        1,
+    )
+    assert response.reasoning_tokens == 15 and response.output_tokens == 20

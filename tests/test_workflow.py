@@ -120,3 +120,22 @@ def test_multi_answer_cannot_use_tokens(tmp_path):
         write_meta(directory, meta)
         with pytest.raises(ValueError, match="custom checker"):
             approve(con, ws, "2000A")
+
+
+def test_collected_limits_cannot_be_silently_overridden(tmp_path):
+    with connect(tmp_path / "db") as con:
+        ws, directory = synthetic_problem(con, tmp_path)
+        meta = read_meta(directory)
+        meta["time_limit_seconds"] = 20
+        write_meta(directory, meta)
+        with pytest.raises(ValueError, match="time_limit_seconds"):
+            approve(con, ws, "2000A")
+
+
+def test_source_refresh_invalidates_approval_without_rewriting_assets(tmp_path):
+    with connect(tmp_path / "db") as con:
+        ws, directory = synthetic_problem(con, tmp_path)
+        approve(con, ws, "2000A")
+        con.execute("UPDATE problems SET rating=1300 WHERE id='2000A'")
+        with pytest.raises(ValueError, match="rating"):
+            current_approval(con, directory)
