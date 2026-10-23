@@ -1,0 +1,49 @@
+# Intentionally incomplete: no guessed model IDs, cutoffs, dates, or prices.
+# Fill fields from primary sources. `cflive models` explains missing metadata.
+# max_output_tokens and concurrency are experiment settings, not model capability claims.
+models:
+  openai:
+    provider: openai
+    display_name: OpenAI (configure exact snapshot)
+    model_id: null
+    training_cutoff: null
+    cutoff_source_url: null
+    release_date: null
+    prices: null
+    max_output_tokens: 8192
+    sampling: {}
+    concurrency: 2
+  anthropic:
+    provider: anthropic
+    display_name: Anthropic (configure exact snapshot)
+    model_id: null
+    training_cutoff: null
+    cutoff_source_url: null
+    release_date: null
+    prices: null
+    max_output_tokens: 8192
+    sampling: {}
+    concurrency: 2
+  google:
+    provider: google
+    display_name: Google (configure exact snapshot)
+    model_id: null
+    training_cutoff: null
+    cutoff_source_url: null
+    release_date: null
+    prices: null
+    max_output_tokens: 8192
+    sampling: {}
+    concurrency: 2
+  openrouter:
+    provider: openrouter
+    display_name: OpenRouter (configure exact open-weight snapshot)
+    model_id: null
+    training_cutoff: null
+    cutoff_source_url: null
+    release_date: null
+    prices: null
+    max_output_tokens: 8192
+    input_reservation_tokens: null
+    sampling: {}
+    concurrency: 2

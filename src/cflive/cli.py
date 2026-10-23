@@ -151,3 +151,102 @@ def verify_command(problem_id: str, image: str = "cflive-judge:0.1") -> None:
         emit(report)
     if report["status"] != "verified":
         raise typer.Exit(1)
+
+
+@app.command("models")
+def models_command(config: Path = Path("models.yaml")) -> None:
+    """Validate metadata without making model calls."""
+    from cflive.models import load_models
+
+    results = {}
+    for name, model in load_models(config).items():
+        try:
+            model.require_evaluable()
+            results[name] = {"ready": True, **model.snapshot()}
+        except ValueError as exc:
+            results[name] = {"ready": False, "reason": str(exc)}
+    emit(results)
+
+
+@app.command("eval")
+def eval_command(
+    model: str = typer.Option(...),
+    config: Path = Path("models.yaml"),
+    problems: list[str] = typer.Option(None),
+    samples: int = typer.Option(4, min=1),
+    budget: float = typer.Option(5.0, min=0, help="Maximum run cost in USD"),
+    workers: int = typer.Option(2, min=1, max=32),
+    image: str = "cflive-judge:0.1",
+    resume: str = typer.Option(None),
+) -> None:
+    """Evaluate only verified, post-cutoff problems using a sourced model configuration."""
+    import asyncio
+
+    from cflive.evaluate import evaluate
+    from cflive.judge import DockerJudge
+    from cflive.models import load_models
+    from cflive.providers import HTTPAdapter
+
+    models = load_models(config)
+    if model not in models:
+        raise typer.BadParameter(f"Unknown model: {model}")
+    selected = models[model]
+    selected.require_evaluable()  # Refuse missing evidence before Docker or any API calls.
+    if selected.provider == "fake":
+        raise typer.BadParameter("Fake providers cannot run from the production CLI")
+    calibration_path = workspace.data / "calibration.json"
+    if not calibration_path.exists():
+        raise typer.BadParameter("Run calibrate with measured reference baselines first")
+    calibration = json.loads(calibration_path.read_text())
+    judge = DockerJudge(
+        image, factor=calibration["factor"], artifact_dir=workspace.root / "artifacts" / "compiled"
+    )
+
+    async def run():
+        adapter = HTTPAdapter(selected)
+        try:
+            with connect(workspace.db) as con:
+                return await evaluate(
+                    con,
+                    workspace,
+                    name=model,
+                    config=selected,
+                    adapter=adapter,
+                    judge=judge,
+                    template=(workspace.root / "prompts" / "single-shot.txt").read_text(),
+                    budget_usd=budget,
+                    samples=samples,
+                    problem_ids=problems or None,
+                    judge_workers=workers,
+                    resume=resume,
+                )
+        finally:
+            await adapter.close()
+
+    report = asyncio.run(run())
+    emit(report)
+    if report["status"] != "complete":
+        raise typer.Exit(1)
+
+
+@app.command("reconcile-generation")
+def reconcile_command(
+    generation_id: int,
+    note: str = typer.Option(...),
+    response: Path = typer.Option(None),
+    confirmed_not_billed: bool = False,
+) -> None:
+    """Recover an uncertain response or release its reservation after checking billing."""
+    from cflive.evaluate import reconcile_generation
+
+    with connect(workspace.db) as con:
+        emit(
+            reconcile_generation(
+                con,
+                workspace,
+                generation_id,
+                note=note,
+                response_json=json.loads(response.read_text()) if response else None,
+                confirmed_not_billed=confirmed_not_billed,
+            )
+        )

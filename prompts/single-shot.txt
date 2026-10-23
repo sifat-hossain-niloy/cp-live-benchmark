@@ -1,0 +1,22 @@
+Solve the following competitive programming problem.
+Return a single complete {language_name} solution in exactly one fenced code block labeled {fence}.
+Do not use network access, external files, or interactive queries. Read standard input and write standard output.
+
+{title}
+Time limit: {time_limit_seconds} seconds
+Memory limit: {memory_limit_mb} MB
+
+Statement:
+{legend}
+
+Input:
+{input_spec}
+
+Output:
+{output_spec}
+
+Samples:
+{samples}
+
+Notes:
+{notes}
